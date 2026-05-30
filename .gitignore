@@ -1,1 +1,12 @@
 docs/CCTV Footage-20260529T160731Z-3-00144614ea.zip
+data/clips/
+*.mp4
+__pycache__/
+*.pyc
+*.pyo
+.env
+*.db
+*.sqlite3
+.pytest_cache/
+htmlcov/
+.coverage

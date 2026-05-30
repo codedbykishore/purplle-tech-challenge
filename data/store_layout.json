@@ -1,0 +1,99 @@
+{
+  "stores": [
+    {
+      "store_id": "STORE_BLR_002",
+      "name": "Brigade Road",
+      "city": "Bangalore",
+      "open_time": "10:00",
+      "close_time": "22:00",
+      "timezone": "Asia/Kolkata",
+      "dimensions_m": {
+        "width": 15.0,
+        "length": 10.0
+      },
+      "cameras": [
+        {
+          "camera_id": "CAM_ENTRY_01",
+          "location": "Entry/Exit threshold",
+          "angle": "entry",
+          "clip": "CAM_ENTRY_01.mp4"
+        },
+        {
+          "camera_id": "CAM_MAIN_01",
+          "location": "Main floor - front section",
+          "angle": "main_floor",
+          "clip": "CAM_MAIN_01.mp4"
+        },
+        {
+          "camera_id": "CAM_BILLING_01",
+          "location": "Billing counter area",
+          "angle": "billing",
+          "clip": "CAM_BILLING_01.mp4"
+        },
+        {
+          "camera_id": "CAM_MAIN_02",
+          "location": "Main floor - rear section",
+          "angle": "main_floor",
+          "clip": "CAM_MAIN_02.mp4"
+        },
+        {
+          "camera_id": "CAM_BILLING_02",
+          "location": "Billing counter - side view",
+          "angle": "billing",
+          "clip": "CAM_BILLING_02.mp4"
+        }
+      ],
+      "zones": [
+        {
+          "zone_id": "ENTRY",
+          "name": "Entry Threshold",
+          "description": "Entry/exit door area",
+          "polygon": [[0, 0], [3, 0], [3, 2], [0, 2]],
+          "cameras": ["CAM_ENTRY_01"]
+        },
+        {
+          "zone_id": "BROWSING",
+          "name": "Main Browsing Floor",
+          "description": "Central aisles and browsing area",
+          "polygon": [[3, 0], [12, 0], [12, 4], [3, 4]],
+          "cameras": ["CAM_MAIN_01", "CAM_MAIN_02"]
+        },
+        {
+          "zone_id": "SKINCARE",
+          "name": "Skincare Section",
+          "description": "Skincare product shelves",
+          "polygon": [[3, 4], [7, 4], [7, 8], [3, 8]],
+          "cameras": ["CAM_MAIN_01", "CAM_MAIN_02"]
+        },
+        {
+          "zone_id": "MAKEUP",
+          "name": "Makeup Section",
+          "description": "Makeup product shelves",
+          "polygon": [[7, 4], [12, 4], [12, 8], [7, 8]],
+          "cameras": ["CAM_MAIN_01", "CAM_MAIN_02"]
+        },
+        {
+          "zone_id": "BILLING",
+          "name": "Billing Counter",
+          "description": "Checkout and billing counter area",
+          "polygon": [[12, 8], [15, 8], [15, 10], [12, 10]],
+          "cameras": ["CAM_BILLING_01", "CAM_BILLING_02"]
+        },
+        {
+          "zone_id": "STAFF_AREA",
+          "name": "Staff Area",
+          "description": "Behind-counter staff-only area",
+          "polygon": [[12, 6], [15, 6], [15, 8], [12, 8]],
+          "cameras": ["CAM_BILLING_01", "CAM_BILLING_02"]
+        }
+      ],
+      "camera_coverage": {
+        "CAM_ENTRY_01": ["ENTRY"],
+        "CAM_MAIN_01": ["BROWSING", "SKINCARE", "MAKEUP"],
+        "CAM_BILLING_01": ["BILLING", "STAFF_AREA"],
+        "CAM_MAIN_02": ["BROWSING", "SKINCARE", "MAKEUP"],
+        "CAM_BILLING_02": ["BILLING", "STAFF_AREA"]
+      }
+    }
+  ]
+}
