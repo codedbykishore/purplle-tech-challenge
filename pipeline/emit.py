@@ -53,58 +53,58 @@ def emit_event(
     }
 
 
-def emit_entry(store_id, camera_id, visitor_id, timestamp, is_staff=False, confidence=0.9):
+def emit_entry(store_id, camera_id, visitor_id, timestamp, is_staff=False, confidence=0.9, session_seq=1):
     """Shorthand for ENTRY event."""
     return emit_event(store_id, camera_id, visitor_id, "ENTRY", timestamp,
-                      is_staff=is_staff, confidence=confidence)
+                      is_staff=is_staff, confidence=confidence, session_seq=session_seq)
 
 
-def emit_exit(store_id, camera_id, visitor_id, timestamp, is_staff=False, confidence=0.9):
+def emit_exit(store_id, camera_id, visitor_id, timestamp, is_staff=False, confidence=0.9, session_seq=1):
     """Shorthand for EXIT event."""
     return emit_event(store_id, camera_id, visitor_id, "EXIT", timestamp,
-                      is_staff=is_staff, confidence=confidence)
+                      is_staff=is_staff, confidence=confidence, session_seq=session_seq)
 
 
 def emit_zone_enter(store_id, camera_id, visitor_id, timestamp, zone_id,
-                    is_staff=False, confidence=0.8):
+                    is_staff=False, confidence=0.8, session_seq=1):
     """Shorthand for ZONE_ENTER event."""
     return emit_event(store_id, camera_id, visitor_id, "ZONE_ENTER", timestamp,
-                      zone_id=zone_id, is_staff=is_staff, confidence=confidence)
+                      zone_id=zone_id, is_staff=is_staff, confidence=confidence, session_seq=session_seq)
 
 
 def emit_zone_exit(store_id, camera_id, visitor_id, timestamp, zone_id,
-                   is_staff=False, confidence=0.8):
+                   is_staff=False, confidence=0.8, session_seq=1):
     """Shorthand for ZONE_EXIT event."""
     return emit_event(store_id, camera_id, visitor_id, "ZONE_EXIT", timestamp,
-                      zone_id=zone_id, is_staff=is_staff, confidence=confidence)
+                      zone_id=zone_id, is_staff=is_staff, confidence=confidence, session_seq=session_seq)
 
 
 def emit_zone_dwell(store_id, camera_id, visitor_id, timestamp, zone_id,
-                    dwell_ms, is_staff=False, confidence=0.8, sku_zone=None):
+                    dwell_ms, is_staff=False, confidence=0.8, sku_zone=None, session_seq=1):
     """Shorthand for ZONE_DWELL event."""
     return emit_event(store_id, camera_id, visitor_id, "ZONE_DWELL", timestamp,
                       zone_id=zone_id, dwell_ms=dwell_ms, is_staff=is_staff,
-                      confidence=confidence, sku_zone=sku_zone)
+                      confidence=confidence, sku_zone=sku_zone, session_seq=session_seq)
 
 
 def emit_billing_queue_join(store_id, camera_id, visitor_id, timestamp,
-                            queue_depth, confidence=0.8):
+                            queue_depth, confidence=0.8, session_seq=1):
     """Shorthand for BILLING_QUEUE_JOIN event."""
     return emit_event(store_id, camera_id, visitor_id, "BILLING_QUEUE_JOIN", timestamp,
-                      zone_id="BILLING", queue_depth=queue_depth, confidence=confidence)
+                      zone_id="BILLING", queue_depth=queue_depth, confidence=confidence, session_seq=session_seq)
 
 
 def emit_billing_queue_abandon(store_id, camera_id, visitor_id, timestamp,
-                               confidence=0.8):
+                               confidence=0.8, session_seq=1):
     """Shorthand for BILLING_QUEUE_ABANDON event."""
     return emit_event(store_id, camera_id, visitor_id, "BILLING_QUEUE_ABANDON", timestamp,
-                      zone_id="BILLING", confidence=confidence)
+                      zone_id="BILLING", confidence=confidence, session_seq=session_seq)
 
 
-def emit_reentry(store_id, camera_id, visitor_id, timestamp, confidence=0.7):
+def emit_reentry(store_id, camera_id, visitor_id, timestamp, confidence=0.7, session_seq=1):
     """Shorthand for REENTRY event."""
     return emit_event(store_id, camera_id, visitor_id, "REENTRY", timestamp,
-                      confidence=confidence)
+                      confidence=confidence, session_seq=session_seq)
 
 
 def events_to_jsonl(events: list[dict], filepath: str):
