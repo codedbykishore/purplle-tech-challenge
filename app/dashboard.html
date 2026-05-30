@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Store Intelligence Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1117;
+            color: #e1e4e8;
+            min-height: 100vh;
+        }
+        header {
+            background: linear-gradient(135deg, #1a1d27 0%, #242736 100%);
+            border-bottom: 1px solid #2d303e;
+            padding: 1.5rem 2rem;
+        }
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            background: linear-gradient(90deg, #58a6ff, #3fb950);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        header p { color: #8b949e; font-size: 0.875rem; margin-top: 0.25rem; }
+        main {
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.25rem;
+            margin-top: 1.5rem;
+        }
+        .card {
+            background: #1a1d27;
+            border: 1px solid #2d303e;
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: border-color 0.2s;
+        }
+        .card:hover { border-color: #58a6ff; }
+        .card h3 { font-size: 1rem; font-weight: 500; color: #8b949e; margin-bottom: 0.75rem; }
+        .card .value { font-size: 2rem; font-weight: 700; color: #f0f6fc; }
+        .card .sub { font-size: 0.8rem; color: #58a6ff; margin-top: 0.25rem; }
+        .placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 200px;
+            color: #484f5e;
+            font-size: 0.9rem;
+            border: 2px dashed #2d303e;
+            border-radius: 12px;
+            margin-top: 1.5rem;
+        }
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: #484f5e;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Store Intelligence Dashboard</h1>
+        <p>Real-time retail analytics from CCTV footage</p>
+    </header>
+    <main>
+        <div class="grid">
+            <div class="card">
+                <h3>Active Visitors</h3>
+                <div class="value">—</div>
+                <div class="sub">Loading...</div>
+            </div>
+            <div class="card">
+                <h3>Conversion Rate</h3>
+                <div class="value">—</div>
+                <div class="sub">Loading...</div>
+            </div>
+            <div class="card">
+                <h3>Queue Depth</h3>
+                <div class="value">—</div>
+                <div class="sub">Loading...</div>
+            </div>
+            <div class="card">
+                <h3>Abandonment Rate</h3>
+                <div class="value">—</div>
+                <div class="sub">Loading...</div>
+            </div>
+        </div>
+        <div class="placeholder">
+            Dashboard visualizations coming in Subtask 11
+        </div>
+    </main>
+    <footer>
+        Store Intelligence API &middot; v1.0.0
+    </footer>
+</body>
+</html>
