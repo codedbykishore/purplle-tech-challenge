@@ -1,0 +1,14 @@
+.git
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+htmlcov
+.coverage
+data/clips/*.mp4
+*.db
+.env
+docs/
+tests/
+scripts/
+*.md
