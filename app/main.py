@@ -16,7 +16,7 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import structlog
 from fastapi import FastAPI, HTTPException, Request
@@ -25,9 +25,16 @@ from fastapi.responses import JSONResponse, HTMLResponse
 
 from app.database import get_database, init_database, seed_pos_data
 from app.models import (
+    Anomaly,
+    AnomalyResponse,
     EventBatch,
-    IngestResponse,
+    FunnelResponse,
+    FunnelStage,
     HealthResponse,
+    HeatmapResponse,
+    HeatmapZone,
+    IngestResponse,
+    MetricsResponse,
     StoreHealth,
 )
 from app.session import SessionManager
@@ -272,83 +279,405 @@ async def health_check():
 # GET /stores/{store_id}/metrics
 # ──────────────────────────────────────────────
 
-@app.get("/stores/{store_id}/metrics")
+@app.get("/stores/{store_id}/metrics", response_model=MetricsResponse)
 async def get_metrics(store_id: str):
-    """
-    Real-time store metrics.
-    Full implementation in Subtask 7 — stub returning default values.
-    """
-    return {
-        "store_id": store_id,
-        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        "unique_visitors": 0,
-        "conversion_rate": 0.0,
-        "avg_dwell_per_zone": {},
-        "current_queue_depth": 0,
-        "abandonment_rate": 0.0,
-        "total_entries": 0,
-        "total_exits": 0,
-        "staff_excluded_count": 0,
-    }
+    """Real-time store metrics computed from live events."""
+    conn = get_database()
+    try:
+        # Unique non-staff visitors
+        visitors = conn.execute(
+            """SELECT COUNT(DISTINCT visitor_id) as cnt FROM events
+               WHERE store_id = ? AND is_staff = 0""",
+            (store_id,),
+        ).fetchone()["cnt"]
+
+        # Staff count
+        staff_count = conn.execute(
+            """SELECT COUNT(DISTINCT visitor_id) as cnt FROM events
+               WHERE store_id = ? AND is_staff = 1""",
+            (store_id,),
+        ).fetchone()["cnt"]
+
+        # Total entries / exits
+        total_entries = conn.execute(
+            "SELECT COUNT(*) as cnt FROM events WHERE store_id=? AND event_type='ENTRY'",
+            (store_id,),
+        ).fetchone()["cnt"]
+
+        total_exits = conn.execute(
+            "SELECT COUNT(*) as cnt FROM events WHERE store_id=? AND event_type='EXIT'",
+            (store_id,),
+        ).fetchone()["cnt"]
+
+        # Avg dwell per zone (from ZONE_DWELL events)
+        dwell_rows = conn.execute(
+            """SELECT zone_id, AVG(dwell_ms) as avg_dwell FROM events
+               WHERE store_id=? AND event_type='ZONE_DWELL' AND zone_id IS NOT NULL
+               GROUP BY zone_id""",
+            (store_id,),
+        ).fetchall()
+        avg_dwell = {row["zone_id"]: int(row["avg_dwell"]) for row in dwell_rows}
+
+        # Queue depth (latest BILLING_QUEUE_JOIN metadata)
+        queue_row = conn.execute(
+            """SELECT metadata_json FROM events
+               WHERE store_id=? AND event_type='BILLING_QUEUE_JOIN'
+               ORDER BY timestamp DESC LIMIT 1""",
+            (store_id,),
+        ).fetchone()
+        queue_depth = 0
+        if queue_row and queue_row["metadata_json"]:
+            meta = json.loads(queue_row["metadata_json"])
+            queue_depth = meta.get("queue_depth", 0)
+
+        # Abandonment rate
+        joins = conn.execute(
+            "SELECT COUNT(*) as cnt FROM events WHERE store_id=? AND event_type='BILLING_QUEUE_JOIN'",
+            (store_id,),
+        ).fetchone()["cnt"]
+        abandons = conn.execute(
+            "SELECT COUNT(*) as cnt FROM events WHERE store_id=? AND event_type='BILLING_QUEUE_ABANDON'",
+            (store_id,),
+        ).fetchone()["cnt"]
+        abandonment_rate = abandons / (joins + abandons) if (joins + abandons) > 0 else 0.0
+
+        # Conversion rate — billing visitors with a POS transaction within 5 min
+        billing_vids = [
+            r["visitor_id"]
+            for r in conn.execute(
+                """SELECT DISTINCT visitor_id FROM events
+                   WHERE store_id=? AND zone_id='BILLING' AND is_staff=0""",
+                (store_id,),
+            ).fetchall()
+        ]
+
+        pos_txns = conn.execute(
+            "SELECT timestamp FROM pos_transactions WHERE store_id=?",
+            (store_id,),
+        ).fetchall()
+        pos_times = [
+            datetime.fromisoformat(r["timestamp"].replace("Z", "+00:00"))
+            for r in pos_txns
+        ]
+
+        converted = 0
+        for vid in billing_vids:
+            billing_evts = conn.execute(
+                """SELECT timestamp FROM events
+                   WHERE store_id=? AND visitor_id=? AND zone_id='BILLING'
+                   AND event_type IN ('ZONE_ENTER','ZONE_DWELL')""",
+                (store_id, vid),
+            ).fetchall()
+            for be in billing_evts:
+                bev_time = datetime.fromisoformat(be["timestamp"].replace("Z", "+00:00"))
+                found = False
+                for pt in pos_times:
+                    if 0 <= (pt - bev_time).total_seconds() <= 300:
+                        converted += 1
+                        found = True
+                        break
+                if found:
+                    break
+
+        conversion_rate = converted / visitors if visitors > 0 else 0.0
+
+        return MetricsResponse(
+            store_id=store_id,
+            date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            unique_visitors=visitors,
+            conversion_rate=round(conversion_rate, 3),
+            avg_dwell_per_zone=avg_dwell,
+            current_queue_depth=queue_depth,
+            abandonment_rate=round(abandonment_rate, 3),
+            total_entries=total_entries,
+            total_exits=total_exits,
+            staff_excluded_count=staff_count,
+        )
+    finally:
+        conn.close()
 
 
 # ──────────────────────────────────────────────
 # GET /stores/{store_id}/funnel
 # ──────────────────────────────────────────────
 
-@app.get("/stores/{store_id}/funnel")
+@app.get("/stores/{store_id}/funnel", response_model=FunnelResponse)
 async def get_funnel(store_id: str):
-    """
-    Conversion funnel stages.
-    Full implementation in Subtask 7 — stub returning default values.
-    """
-    return {
-        "store_id": store_id,
-        "stages": [
-            {"name": "ENTRY", "count": 0, "dropoff_pct": 0.0},
-            {"name": "BROWSING", "count": 0, "dropoff_pct": 0.0},
-            {"name": "BILLING", "count": 0, "dropoff_pct": 0.0},
-            {"name": "CONVERSION", "count": 0, "dropoff_pct": 0.0},
-        ],
-        "overall_conversion": 0.0,
-    }
+    """Conversion funnel: Entry → Zone Visit → Billing Queue → Purchase."""
+    conn = get_database()
+    try:
+        # Stage 1: Entry (unique non-staff visitors who entered)
+        entries = conn.execute(
+            """SELECT COUNT(DISTINCT visitor_id) as cnt FROM events
+               WHERE store_id=? AND event_type='ENTRY' AND is_staff=0""",
+            (store_id,),
+        ).fetchone()["cnt"]
+
+        # Stage 2: Zone Visit (visited a product zone)
+        zone_visits = conn.execute(
+            """SELECT COUNT(DISTINCT visitor_id) as cnt FROM events
+               WHERE store_id=? AND event_type='ZONE_ENTER'
+               AND zone_id IN ('SKINCARE','MAKEUP','BROWSING') AND is_staff=0""",
+            (store_id,),
+        ).fetchone()["cnt"]
+
+        # Stage 3: Billing Queue (joined billing queue)
+        billing_queue = conn.execute(
+            """SELECT COUNT(DISTINCT visitor_id) as cnt FROM events
+               WHERE store_id=? AND event_type='BILLING_QUEUE_JOIN' AND is_staff=0""",
+            (store_id,),
+        ).fetchone()["cnt"]
+
+        # Stage 4: Purchase (converted — billing visitor + POS txn within 5 min)
+        billing_vids = [
+            r["visitor_id"]
+            for r in conn.execute(
+                """SELECT DISTINCT visitor_id FROM events
+                   WHERE store_id=? AND zone_id='BILLING' AND is_staff=0""",
+                (store_id,),
+            ).fetchall()
+        ]
+
+        pos_txns = conn.execute(
+            "SELECT timestamp FROM pos_transactions WHERE store_id=?",
+            (store_id,),
+        ).fetchall()
+        pos_times = [
+            datetime.fromisoformat(r["timestamp"].replace("Z", "+00:00"))
+            for r in pos_txns
+        ]
+
+        purchase = 0
+        for vid in billing_vids:
+            billing_evts = conn.execute(
+                """SELECT timestamp FROM events
+                   WHERE store_id=? AND visitor_id=? AND zone_id='BILLING'
+                   AND event_type IN ('ZONE_ENTER','ZONE_DWELL')""",
+                (store_id, vid),
+            ).fetchall()
+            for be in billing_evts:
+                bev_time = datetime.fromisoformat(be["timestamp"].replace("Z", "+00:00"))
+                found = False
+                for pt in pos_times:
+                    if 0 <= (pt - bev_time).total_seconds() <= 300:
+                        purchase += 1
+                        found = True
+                        break
+                if found:
+                    break
+
+        stages = [
+            FunnelStage(name="Entry", count=entries, dropoff_pct=0.0),
+            FunnelStage(
+                name="Zone Visit",
+                count=zone_visits,
+                dropoff_pct=round(max(0.0, (1 - zone_visits / entries) * 100), 1)
+                if entries > 0
+                else 0.0,
+            ),
+            FunnelStage(
+                name="Billing Queue",
+                count=billing_queue,
+                dropoff_pct=round(max(0.0, (1 - billing_queue / zone_visits) * 100), 1)
+                if zone_visits > 0
+                else 0.0,
+            ),
+            FunnelStage(
+                name="Purchase",
+                count=purchase,
+                dropoff_pct=round(max(0.0, (1 - purchase / billing_queue) * 100), 1)
+                if billing_queue > 0
+                else 0.0,
+            ),
+        ]
+
+        overall_conversion = purchase / entries if entries > 0 else 0.0
+
+        return FunnelResponse(
+            store_id=store_id,
+            stages=stages,
+            overall_conversion=round(overall_conversion, 3),
+        )
+    finally:
+        conn.close()
 
 
 # ──────────────────────────────────────────────
 # GET /stores/{store_id}/heatmap
 # ──────────────────────────────────────────────
 
-@app.get("/stores/{store_id}/heatmap")
+@app.get("/stores/{store_id}/heatmap", response_model=HeatmapResponse)
 async def get_heatmap(store_id: str):
-    """
-    Zone heatmap data.
-    Full implementation in Subtask 7 — stub returning default values.
-    """
-    return {
-        "store_id": store_id,
-        "zones": [
-            {"zone_id": "ENTRY", "visit_count": 0, "avg_dwell_ms": 0, "score": 0},
-            {"zone_id": "BROWSING", "visit_count": 0, "avg_dwell_ms": 0, "score": 0},
-            {"zone_id": "BILLING", "visit_count": 0, "avg_dwell_ms": 0, "score": 0},
-        ],
-        "data_confidence": "low",
-    }
+    """Zone heatmap with visit counts, average dwell, and activity score (0–100)."""
+    conn = get_database()
+    try:
+        zones_data = conn.execute(
+            """SELECT zone_id, COUNT(DISTINCT visitor_id) as visits,
+                      AVG(dwell_ms) as avg_dwell
+               FROM events
+               WHERE store_id=? AND event_type='ZONE_ENTER' AND zone_id IS NOT NULL
+               GROUP BY zone_id""",
+            (store_id,),
+        ).fetchall()
+
+        # Score is proportional to visit count relative to the busiest zone
+        max_visits = max((z["visits"] for z in zones_data), default=1) or 1
+
+        zones = []
+        for z in zones_data:
+            score = int((z["visits"] / max_visits) * 100)
+            zones.append(
+                HeatmapZone(
+                    zone_id=z["zone_id"],
+                    visit_count=z["visits"],
+                    avg_dwell_ms=int(z["avg_dwell"] or 0),
+                    score=score,
+                )
+            )
+
+        # Data confidence based on total sessions
+        total_sessions = conn.execute(
+            "SELECT COUNT(DISTINCT visitor_id) as cnt FROM events WHERE store_id=?",
+            (store_id,),
+        ).fetchone()["cnt"]
+        confidence = (
+            "high" if total_sessions >= 20 else "medium" if total_sessions >= 10 else "low"
+        )
+
+        return HeatmapResponse(
+            store_id=store_id,
+            zones=zones,
+            data_confidence=confidence,
+        )
+    finally:
+        conn.close()
 
 
 # ──────────────────────────────────────────────
 # GET /stores/{store_id}/anomalies
 # ──────────────────────────────────────────────
 
-@app.get("/stores/{store_id}/anomalies")
+@app.get("/stores/{store_id}/anomalies", response_model=AnomalyResponse)
 async def get_anomalies(store_id: str):
-    """
-    Anomaly detection results.
-    Full implementation in Subtask 7 — stub returning empty list.
-    """
-    return {
-        "store_id": store_id,
-        "anomalies": [],
-    }
+    """Detect anomalies: billing queue spikes, conversion drops, dead zones."""
+    conn = get_database()
+    try:
+        anomalies = []
+
+        # ── BILLING_QUEUE_SPIKE ──
+        queue_row = conn.execute(
+            """SELECT metadata_json FROM events
+               WHERE store_id=? AND event_type='BILLING_QUEUE_JOIN'
+               ORDER BY timestamp DESC LIMIT 1""",
+            (store_id,),
+        ).fetchone()
+        if queue_row and queue_row["metadata_json"]:
+            meta = json.loads(queue_row["metadata_json"])
+            qd = meta.get("queue_depth", 0)
+            if qd > 6:
+                anomalies.append(
+                    Anomaly(
+                        type="BILLING_QUEUE_SPIKE",
+                        severity="WARN",
+                        description=(
+                            f"Queue depth {qd} exceeds normal threshold of 6"
+                        ),
+                        detected_at=datetime.now(timezone.utc).strftime(
+                            "%Y-%m-%dT%H:%M:%SZ"
+                        ),
+                        suggested_action="Open additional billing counter",
+                    )
+                )
+
+        # ── CONVERSION_DROP ──
+        visitors = conn.execute(
+            """SELECT COUNT(DISTINCT visitor_id) as cnt FROM events
+               WHERE store_id=? AND is_staff=0""",
+            (store_id,),
+        ).fetchone()["cnt"]
+
+        if visitors > 0:
+            billing_vids = [
+                r["visitor_id"]
+                for r in conn.execute(
+                    """SELECT DISTINCT visitor_id FROM events
+                       WHERE store_id=? AND zone_id='BILLING' AND is_staff=0""",
+                    (store_id,),
+                ).fetchall()
+            ]
+
+            pos_txns = conn.execute(
+                "SELECT timestamp FROM pos_transactions WHERE store_id=?",
+                (store_id,),
+            ).fetchall()
+            pos_times = [
+                datetime.fromisoformat(r["timestamp"].replace("Z", "+00:00"))
+                for r in pos_txns
+            ]
+
+            converted = 0
+            for vid in billing_vids:
+                billing_evts = conn.execute(
+                    """SELECT timestamp FROM events
+                       WHERE store_id=? AND visitor_id=? AND zone_id='BILLING'
+                       AND event_type IN ('ZONE_ENTER','ZONE_DWELL')""",
+                    (store_id, vid),
+                ).fetchall()
+                for be in billing_evts:
+                    bev_time = datetime.fromisoformat(
+                        be["timestamp"].replace("Z", "+00:00")
+                    )
+                    found = False
+                    for pt in pos_times:
+                        if 0 <= (pt - bev_time).total_seconds() <= 300:
+                            converted += 1
+                            found = True
+                            break
+                    if found:
+                        break
+
+            conv_rate = converted / visitors
+            if conv_rate < 0.1:
+                anomalies.append(
+                    Anomaly(
+                        type="CONVERSION_DROP",
+                        severity="WARN",
+                        description=(
+                            f"Conversion rate {conv_rate:.1%} is below 10% threshold"
+                        ),
+                        detected_at=datetime.now(timezone.utc).strftime(
+                            "%Y-%m-%dT%H:%M:%SZ"
+                        ),
+                        suggested_action="Investigate floor staffing and queue management",
+                    )
+                )
+
+        # ── DEAD_ZONE ──
+        threshold = (datetime.now(timezone.utc) - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%S")
+        dead_zones = conn.execute(
+            """SELECT zone_id FROM events
+               WHERE store_id=? AND event_type='ZONE_ENTER'
+               GROUP BY zone_id
+               HAVING MAX(timestamp) < ?""",
+            (store_id, threshold),
+        ).fetchall()
+
+        for row in dead_zones:
+            anomalies.append(
+                Anomaly(
+                    type="DEAD_ZONE",
+                    severity="INFO",
+                    description=f"Zone {row['zone_id']} has had no visitors in the last 30 minutes",
+                    detected_at=datetime.now(timezone.utc).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ"
+                    ),
+                    suggested_action="Check if zone is staffed and stocked",
+                )
+            )
+
+        return AnomalyResponse(store_id=store_id, anomalies=anomalies)
+    finally:
+        conn.close()
 
 
 # ──────────────────────────────────────────────
