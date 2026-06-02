@@ -128,9 +128,21 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ──────────────────────────────────────────────
 
 @app.post("/events/ingest", response_model=IngestResponse)
-async def ingest_events(batch: EventBatch):
-    """Accept a batch of events (up to 500). Idempotent by event_id."""
-    if len(batch.events) > 500:
+async def ingest_events(request: Request):
+    """Accept a batch of events (up to 500). Idempotent by event_id.
+
+    Uses lenient per-event validation: structurally invalid events are
+    rejected individually rather than failing the entire batch.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    raw_events = body.get("events", [])
+    if not isinstance(raw_events, list):
+        raise HTTPException(status_code=400, detail="events must be a list")
+    if len(raw_events) > 500:
         raise HTTPException(status_code=400, detail="Batch size exceeds 500")
 
     accepted = 0
@@ -138,65 +150,72 @@ async def ingest_events(batch: EventBatch):
     errors = []
 
     conn = get_database()
-    try:
-        for event in batch.events:
-            try:
-                # Check idempotency
-                existing = conn.execute(
-                    "SELECT 1 FROM events WHERE event_id = ?",
-                    (event.event_id,),
-                ).fetchone()
+    for raw_event in raw_events:
+        # Validate each event individually (lenient parsing)
+        try:
+            from app.models import EventIngest
+            event = EventIngest.model_validate(raw_event)
+        except Exception as e:
+            rejected += 1
+            errors.append({"error": str(e), "event": raw_event})
+            continue
 
-                if existing:
-                    # Already ingested — skip (idempotent, don't count as accepted)
-                    continue
+        try:
+            # Check idempotency
+            existing = conn.execute(
+                "SELECT 1 FROM events WHERE event_id = ?",
+                (event.event_id,),
+            ).fetchone()
 
-                # Insert event
-                conn.execute(
-                    """INSERT INTO events
-                       (event_id, store_id, camera_id, visitor_id, event_type,
-                        timestamp, zone_id, dwell_ms, is_staff, confidence, metadata_json)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        event.event_id,
-                        event.store_id,
-                        event.camera_id,
-                        event.visitor_id,
-                        event.event_type,
-                        event.timestamp,
-                        event.zone_id,
-                        event.dwell_ms,
-                        event.is_staff,
-                        event.confidence,
-                        json.dumps(event.metadata.model_dump()),
+            if existing:
+                # Already ingested — skip (idempotent, don't count as accepted)
+                continue
+
+            # Insert event
+            conn.execute(
+                """INSERT INTO events
+                   (event_id, store_id, camera_id, visitor_id, event_type,
+                    timestamp, zone_id, dwell_ms, is_staff, confidence, metadata_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    event.event_id,
+                    event.store_id,
+                    event.camera_id,
+                    event.visitor_id,
+                    event.event_type,
+                    event.timestamp,
+                    event.zone_id,
+                    event.dwell_ms,
+                    event.is_staff,
+                    event.confidence,
+                    json.dumps(event.metadata.model_dump()),
+                ),
+            )
+            accepted += 1
+
+            # Update session manager
+            if event.event_type == "ENTRY":
+                _session_manager.create_session(
+                    event.visitor_id, event.store_id, event.model_dump()
+                )
+            elif event.event_type == "EXIT":
+                _session_manager.close_session(
+                    event.visitor_id, event.model_dump()
+                )
+            elif event.event_type == "ZONE_ENTER" and event.zone_id == "BILLING":
+                _session_manager.update_billing_entry(
+                    event.visitor_id,
+                    datetime.fromisoformat(
+                        event.timestamp.replace("Z", "+00:00")
                     ),
                 )
-                accepted += 1
 
-                # Update session manager
-                if event.event_type == "ENTRY":
-                    _session_manager.create_session(
-                        event.visitor_id, event.store_id, event.model_dump()
-                    )
-                elif event.event_type == "EXIT":
-                    _session_manager.close_session(
-                        event.visitor_id, event.model_dump()
-                    )
-                elif event.event_type == "ZONE_ENTER" and event.zone_id == "BILLING":
-                    _session_manager.update_billing_entry(
-                        event.visitor_id,
-                        datetime.fromisoformat(
-                            event.timestamp.replace("Z", "+00:00")
-                        ),
-                    )
+        except Exception as e:
+            rejected += 1
+            errors.append({"event_id": event.event_id, "error": str(e)})
 
-            except Exception as e:
-                rejected += 1
-                errors.append({"event_id": event.event_id, "error": str(e)})
-
-        conn.commit()
-    finally:
-        conn.close()
+    conn.commit()
+    conn.close()
 
     logger.info("events_ingested", accepted=accepted, rejected=rejected)
     return IngestResponse(accepted=accepted, rejected=rejected, errors=errors)
@@ -212,7 +231,15 @@ async def health_check():
     uptime = time.time() - _start_time
     warnings = []
 
-    conn = get_database()
+    try:
+        conn = get_database()
+    except Exception as e:
+        logger.error("health_db_failure", error=str(e))
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "database_unavailable", "message": str(e)},
+        )
+
     try:
         # Get all stores that have events
         stores = conn.execute(
