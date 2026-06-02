@@ -4,102 +4,477 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Store Intelligence Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <style>
+        :root {
+            --bg: #0f1117;
+            --bg-card: #1a1d27;
+            --bg-hover: #242736;
+            --border: #2d303e;
+            --text: #e1e4e8;
+            --text-dim: #8b949e;
+            --text-muted: #484f5e;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-yellow: #d29922;
+            --accent-red: #f85149;
+            --accent-purple: #bc8cff;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0f1117;
-            color: #e1e4e8;
+            background: var(--bg);
+            color: var(--text);
             min-height: 100vh;
         }
+
+        /* Header */
         header {
             background: linear-gradient(135deg, #1a1d27 0%, #242736 100%);
-            border-bottom: 1px solid #2d303e;
-            padding: 1.5rem 2rem;
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
         }
         header h1 {
-            font-size: 1.5rem;
+            font-size: 1.4rem;
             font-weight: 600;
-            background: linear-gradient(90deg, #58a6ff, #3fb950);
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
-        header p { color: #8b949e; font-size: 0.875rem; margin-top: 0.25rem; }
-        main {
-            padding: 2rem;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 1.25rem;
-            margin-top: 1.5rem;
-        }
-        .card {
-            background: #1a1d27;
-            border: 1px solid #2d303e;
-            border-radius: 12px;
-            padding: 1.5rem;
-            transition: border-color 0.2s;
-        }
-        .card:hover { border-color: #58a6ff; }
-        .card h3 { font-size: 1rem; font-weight: 500; color: #8b949e; margin-bottom: 0.75rem; }
-        .card .value { font-size: 2rem; font-weight: 700; color: #f0f6fc; }
-        .card .sub { font-size: 0.8rem; color: #58a6ff; margin-top: 0.25rem; }
-        .placeholder {
+        .header-right {
             display: flex;
             align-items: center;
-            justify-content: center;
-            min-height: 200px;
-            color: #484f5e;
-            font-size: 0.9rem;
-            border: 2px dashed #2d303e;
-            border-radius: 12px;
-            margin-top: 1.5rem;
+            gap: 1rem;
         }
-        footer {
+        .store-selector {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            cursor: pointer;
+        }
+        .store-selector:focus { outline: 1px solid var(--accent-blue); }
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+        .status-active { background: var(--accent-green); }
+        .status-stale { background: var(--accent-yellow); animation: pulse 1.5s infinite; }
+        .last-update { color: var(--text-muted); font-size: 0.75rem; }
+
+        /* Main */
+        main {
+            padding: 1.5rem 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* KPI Grid */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        @media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 500px) { .kpi-grid { grid-template-columns: 1fr; } }
+
+        .kpi-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem;
+            transition: border-color 0.2s;
+        }
+        .kpi-card:hover { border-color: var(--accent-blue); }
+        .kpi-label { font-size: 0.8rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+        .kpi-value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 0.25rem 0;
+        }
+        .kpi-sub { font-size: 0.75rem; color: var(--text-muted); }
+        .kpi-good { color: var(--accent-green); }
+        .kpi-warn { color: var(--accent-yellow); }
+        .kpi-bad { color: var(--accent-red); }
+        .kpi-neutral { color: var(--text); }
+
+        /* Sections Grid */
+        .sections-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+        @media (max-width: 900px) { .sections-grid { grid-template-columns: 1fr; } }
+
+        .section-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+        .section-card h2 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Funnel */
+        .funnel-container { position: relative; height: 220px; }
+
+        /* Heatmap Table */
+        .heatmap-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .heatmap-table th {
+            text-align: left;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .heatmap-table td {
+            padding: 0.6rem 0;
+            border-bottom: 1px solid rgba(45,48,62,0.5);
+        }
+        .heatmap-bar {
+            height: 24px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            padding: 0 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #fff;
+            min-width: 32px;
+        }
+
+        /* Anomaly Feed */
+        .anomaly-list { max-height: 300px; overflow-y: auto; }
+        .anomaly-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid rgba(45,48,62,0.5);
+        }
+        .anomaly-item:last-child { border-bottom: none; }
+        .anomaly-badge {
+            padding: 0.2rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+        .badge-critical { background: rgba(248,81,73,0.2); color: var(--accent-red); animation: pulse 1.5s infinite; }
+        .badge-warn { background: rgba(210,153,34,0.2); color: var(--accent-yellow); }
+        .badge-info { background: rgba(88,166,255,0.2); color: var(--accent-blue); }
+        .anomaly-text { font-size: 0.85rem; line-height: 1.4; }
+        .anomaly-action { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; }
+        .anomaly-time { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; margin-left: auto; }
+
+        /* Empty State */
+        .empty-state {
+            color: var(--text-muted);
+            font-size: 0.85rem;
             text-align: center;
             padding: 2rem;
-            color: #484f5e;
-            font-size: 0.8rem;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        footer {
+            text-align: center;
+            padding: 1.5rem;
+            color: var(--text-muted);
+            font-size: 0.75rem;
         }
     </style>
 </head>
 <body>
     <header>
         <h1>Store Intelligence Dashboard</h1>
-        <p>Real-time retail analytics from CCTV footage</p>
+        <div class="header-right">
+            <span class="last-update" id="lastUpdate">Connecting...</span>
+            <select class="store-selector" id="storeSelector">
+                <option value="">Loading stores...</option>
+            </select>
+            <span><span class="status-dot status-active" id="statusDot"></span><span id="statusText">—</span></span>
+        </div>
     </header>
+
     <main>
-        <div class="grid">
-            <div class="card">
-                <h3>Active Visitors</h3>
-                <div class="value">—</div>
-                <div class="sub">Loading...</div>
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-label">Unique Visitors</div>
+                <div class="kpi-value kpi-neutral" id="kpiVisitors">—</div>
+                <div class="kpi-sub" id="kpiVisitorsSub">Loading...</div>
             </div>
-            <div class="card">
-                <h3>Conversion Rate</h3>
-                <div class="value">—</div>
-                <div class="sub">Loading...</div>
+            <div class="kpi-card">
+                <div class="kpi-label">Conversion Rate</div>
+                <div class="kpi-value kpi-neutral" id="kpiConversion">—</div>
+                <div class="kpi-sub" id="kpiConversionSub">Loading...</div>
             </div>
-            <div class="card">
-                <h3>Queue Depth</h3>
-                <div class="value">—</div>
-                <div class="sub">Loading...</div>
+            <div class="kpi-card">
+                <div class="kpi-label">Queue Depth</div>
+                <div class="kpi-value kpi-neutral" id="kpiQueue">—</div>
+                <div class="kpi-sub" id="kpiQueueSub">Loading...</div>
             </div>
-            <div class="card">
-                <h3>Abandonment Rate</h3>
-                <div class="value">—</div>
-                <div class="sub">Loading...</div>
+            <div class="kpi-card">
+                <div class="kpi-label">Abandonment Rate</div>
+                <div class="kpi-value kpi-neutral" id="kpiAbandon">—</div>
+                <div class="kpi-sub" id="kpiAbandonSub">Loading...</div>
             </div>
         </div>
-        <div class="placeholder">
-            Dashboard visualizations coming in Subtask 11
+
+        <div class="sections-grid">
+            <div class="section-card">
+                <h2>Conversion Funnel</h2>
+                <div class="funnel-container">
+                    <canvas id="funnelChart"></canvas>
+                </div>
+            </div>
+            <div class="section-card">
+                <h2>Zone Heatmap</h2>
+                <div id="heatmapContainer"><div class="empty-state">Loading...</div></div>
+            </div>
+            <div class="section-card" style="grid-column: 1 / -1;">
+                <h2>Anomaly Feed</h2>
+                <div class="anomaly-list" id="anomalyFeed"><div class="empty-state">Loading...</div></div>
+            </div>
         </div>
     </main>
+
     <footer>
-        Store Intelligence API &middot; v1.0.0
+        Store Intelligence API &middot; Auto-refreshes every 5 seconds
     </footer>
+
+    <script>
+        const API = '';
+        let currentStore = '';
+        let funnelChart = null;
+        let pollInterval = null;
+
+        function scoreColor(score) {
+            if (score >= 70) return 'var(--accent-green)';
+            if (score >= 40) return 'var(--accent-yellow)';
+            return 'var(--accent-red)';
+        }
+
+        function kpiColorClass(value, thresholds) {
+            if (thresholds.good && value >= thresholds.good) return 'kpi-good';
+            if (thresholds.warn && value >= thresholds.warn) return 'kpi-warn';
+            if (thresholds.bad !== undefined && value <= thresholds.bad) return 'kpi-bad';
+            return 'kpi-neutral';
+        }
+
+        function formatTime(isoStr) {
+            if (!isoStr) return '—';
+            const d = new Date(isoStr);
+            return d.toLocaleTimeString();
+        }
+
+        async function fetchJSON(path) {
+            try {
+                const r = await fetch(API + path);
+                if (!r.ok) return null;
+                return await r.json();
+            } catch { return null; }
+        }
+
+        // --- Store Selector ---
+        async function loadStores() {
+            const health = await fetchJSON('/health');
+            const sel = document.getElementById('storeSelector');
+            if (!health || !health.stores || Object.keys(health.stores).length === 0) {
+                sel.innerHTML = '<option value="">No stores</option>';
+                return;
+            }
+            const stores = Object.keys(health.stores);
+            sel.innerHTML = stores.map(s => `<option value="${s}">${s}</option>`).join('');
+            if (!currentStore || !stores.includes(currentStore)) {
+                currentStore = stores[0];
+            }
+            sel.value = currentStore;
+
+            const storeData = health.stores[currentStore];
+            const dot = document.getElementById('statusDot');
+            const txt = document.getElementById('statusText');
+            if (storeData && storeData.status === 'stale') {
+                dot.className = 'status-dot status-stale';
+                txt.textContent = 'STALE';
+            } else {
+                dot.className = 'status-dot status-active';
+                txt.textContent = 'Active';
+            }
+        }
+
+        // --- KPI Cards ---
+        function updateKPIs(metrics) {
+            if (!metrics) return;
+            const v = document.getElementById('kpiVisitors');
+            v.textContent = metrics.unique_visitors;
+            v.className = 'kpi-value ' + kpiColorClass(metrics.unique_visitors, { good: 10, warn: 5, bad: 0 });
+            document.getElementById('kpiVisitorsSub').textContent = `Entries: ${metrics.total_entries} | Exits: ${metrics.total_exits}`;
+
+            const c = document.getElementById('kpiConversion');
+            const convPct = (metrics.conversion_rate * 100).toFixed(1);
+            c.textContent = convPct + '%';
+            c.className = 'kpi-value ' + kpiColorClass(metrics.conversion_rate, { good: 0.15, warn: 0.08, bad: 0.03 });
+            document.getElementById('kpiConversionSub').textContent = `Staff excluded: ${metrics.staff_excluded_count}`;
+
+            const q = document.getElementById('kpiQueue');
+            q.textContent = metrics.current_queue_depth;
+            q.className = 'kpi-value ' + (metrics.current_queue_depth > 6 ? 'kpi-bad' : metrics.current_queue_depth > 3 ? 'kpi-warn' : 'kpi-good');
+            document.getElementById('kpiQueueSub').textContent = 'At billing zone';
+
+            const a = document.getElementById('kpiAbandon');
+            const abPct = (metrics.abandonment_rate * 100).toFixed(1);
+            a.textContent = abPct + '%';
+            a.className = 'kpi-value ' + kpiColorClass(metrics.abandonment_rate, { good: 0, warn: 0.1, bad: 0.2 });
+            const avgDwell = Object.values(metrics.avg_dwell_per_zone || {});
+            const totalDwell = avgDwell.reduce((s, d) => s + d, 0);
+            document.getElementById('kpiAbandonSub').textContent = `Avg dwell: ${(totalDwell / Math.max(avgDwell.length, 1) / 1000).toFixed(0)}s`;
+        }
+
+        // --- Funnel Chart ---
+        function updateFunnel(funnel) {
+            if (!funnel || !funnel.stages) return;
+            const labels = funnel.stages.map(s => s.name);
+            const counts = funnel.stages.map(s => s.count);
+            const ctx = document.getElementById('funnelChart').getContext('2d');
+
+            if (funnelChart) funnelChart.destroy();
+            funnelChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        data: counts,
+                        backgroundColor: ['#58a6ff', '#3fb950', '#d29922', '#bc8cff'],
+                        borderRadius: 6,
+                        barThickness: 32,
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(45,48,62,0.5)' },
+                            ticks: { color: '#8b949e' }
+                        },
+                        y: {
+                            grid: { display: false },
+                            ticks: { color: '#e1e4e8', font: { size: 13 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- Zone Heatmap ---
+        function updateHeatmap(heatmap) {
+            const container = document.getElementById('heatmapContainer');
+            if (!heatmap || !heatmap.zones || heatmap.zones.length === 0) {
+                container.innerHTML = '<div class="empty-state">No zone data yet</div>';
+                return;
+            }
+            const sorted = [...heatmap.zones].sort((a, b) => b.score - a.score);
+            let html = `<table class="heatmap-table">
+                <thead><tr><th>Zone</th><th style="width:60%">Activity</th><th>Visits</th><th>Avg Dwell</th></tr></thead><tbody>`;
+            for (const z of sorted) {
+                const color = scoreColor(z.score);
+                const dwell = (z.avg_dwell_ms / 1000).toFixed(1);
+                html += `<tr>
+                    <td style="font-weight:600">${z.zone_id}</td>
+                    <td><div class="heatmap-bar" style="width:${Math.max(z.score, 5)}%;background:${color}">${z.score}</div></td>
+                    <td style="color:var(--text-dim)">${z.visit_count}</td>
+                    <td style="color:var(--text-dim)">${dwell}s</td>
+                </tr>`;
+            }
+            html += '</tbody></table>';
+            html += `<div style="margin-top:0.5rem;font-size:0.7rem;color:var(--text-muted)">Confidence: ${heatmap.data_confidence || '—'}</div>`;
+            container.innerHTML = html;
+        }
+
+        // --- Anomaly Feed ---
+        function updateAnomalies(data) {
+            const feed = document.getElementById('anomalyFeed');
+            if (!data || !data.anomalies || data.anomalies.length === 0) {
+                feed.innerHTML = '<div class="empty-state">No anomalies detected</div>';
+                return;
+            }
+            let html = '';
+            for (const a of data.anomalies) {
+                const sev = (a.severity || 'INFO').toLowerCase();
+                const badgeClass = sev === 'critical' ? 'badge-critical' : sev === 'warn' ? 'badge-warn' : 'badge-info';
+                html += `<div class="anomaly-item">
+                    <span class="anomaly-badge ${badgeClass}">${a.severity}</span>
+                    <div>
+                        <div class="anomaly-text">${a.description}</div>
+                        <div class="anomaly-action">Suggested: ${a.suggested_action}</div>
+                    </div>
+                    <span class="anomaly-time">${formatTime(a.detected_at)}</span>
+                </div>`;
+            }
+            feed.innerHTML = html;
+        }
+
+        // --- Main Poll ---
+        async function pollData() {
+            if (!currentStore) return;
+            const [metrics, funnel, heatmap, anomalies] = await Promise.all([
+                fetchJSON(`/stores/${currentStore}/metrics`),
+                fetchJSON(`/stores/${currentStore}/funnel`),
+                fetchJSON(`/stores/${currentStore}/heatmap`),
+                fetchJSON(`/stores/${currentStore}/anomalies`),
+            ]);
+            updateKPIs(metrics);
+            updateFunnel(funnel);
+            updateHeatmap(heatmap);
+            updateAnomalies(anomalies);
+
+            document.getElementById('lastUpdate').textContent =
+                'Updated ' + new Date().toLocaleTimeString();
+        }
+
+        async function init() {
+            await loadStores();
+            await pollData();
+            pollInterval = setInterval(async () => {
+                await loadStores();
+                await pollData();
+            }, 5000);
+        }
+
+        document.getElementById('storeSelector').addEventListener('change', (e) => {
+            currentStore = e.target.value;
+            pollData();
+        });
+
+        init();
+    </script>
 </body>
 </html>
