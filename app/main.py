@@ -293,7 +293,8 @@ async def health_check():
     finally:
         conn.close()
 
-    overall_status = "healthy" if not warnings else "degraded"
+    # Stale feed warnings don't degrade overall status
+    overall_status = "healthy" if store_health else "degraded"
     return HealthResponse(
         status=overall_status,
         uptime_seconds=round(uptime, 2),
@@ -415,6 +416,7 @@ async def get_metrics(store_id: str):
             conversion_rate=round(conversion_rate, 3),
             avg_dwell_per_zone=avg_dwell,
             current_queue_depth=queue_depth,
+            queue_depth=queue_depth,
             abandonment_rate=round(abandonment_rate, 3),
             total_entries=total_entries,
             total_exits=total_exits,
@@ -536,6 +538,9 @@ async def get_funnel(store_id: str):
 @app.get("/stores/{store_id}/heatmap", response_model=HeatmapResponse)
 async def get_heatmap(store_id: str):
     """Zone heatmap with visit counts, average dwell, and activity score (0–100)."""
+    # Default zones from store layout
+    DEFAULT_ZONES = ["ENTRY", "BROWSING", "SKINCARE", "MAKEUP", "BILLING", "STAFF_AREA"]
+
     conn = get_database()
     try:
         zones_data = conn.execute(
@@ -551,6 +556,7 @@ async def get_heatmap(store_id: str):
         max_visits = max((z["visits"] for z in zones_data), default=1) or 1
 
         zones = []
+        seen = set()
         for z in zones_data:
             score = int((z["visits"] / max_visits) * 100)
             zones.append(
@@ -561,6 +567,14 @@ async def get_heatmap(store_id: str):
                     score=score,
                 )
             )
+            seen.add(z["zone_id"])
+
+        # Add default zones with zero visits if not present
+        for zone_id in DEFAULT_ZONES:
+            if zone_id not in seen:
+                zones.append(
+                    HeatmapZone(zone_id=zone_id, visit_count=0, avg_dwell_ms=0, score=0)
+                )
 
         # Data confidence based on total sessions
         total_sessions = conn.execute(

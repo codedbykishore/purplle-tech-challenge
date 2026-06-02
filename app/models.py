@@ -99,6 +99,7 @@ class MetricsResponse(BaseModel):
     conversion_rate: float
     avg_dwell_per_zone: dict[str, int]
     current_queue_depth: int
+    queue_depth: int = 0  # Alias for current_queue_depth
     abandonment_rate: float
     total_entries: int
     total_exits: int
